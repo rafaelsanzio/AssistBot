@@ -12,6 +12,13 @@ var express = require('express');
 var bodyParser = require('body-parser');
 var dateFormat = require('dateformat');
 
+var functions = require('./functions.js');
+var mensagens = require('./messages.js');
+
+var scheduler = require('node-schedule');
+
+//var rule = new scheduler.RecurrenceRule();
+
 var mysql = require('mysql');
 var connection = mysql.createConnection({  
   host     : 'localhost',
@@ -27,24 +34,6 @@ connection.connect(function(err){
     } 
     console.log(connection.state);
 });
-
-function teste(callback) {
-  connection.query('SELECT * FROM `usuario`', function(err, rows, fields) { 
-    //console.log(rows);
-    //connection.end();
-    callback(null,rows);
-  });
-}
-
-teste(function(err, content) {
-  if (err) {
-    console.log(err);
-  } else {
-    var n = content;
-    console.log(n[0].NOME_USUA);
-  }
-});
-
 //
 // ## SimpleServer `SimpleServer(obj)`
 //
@@ -70,7 +59,8 @@ var horaMarc;
 var nomeUsua;
 var nomeProf;
 var horario;
-var timeOut1;
+var j;
+var statusUsua;
 var agenMarcado = false;
 
 //GET DA PÁGINA /WEBHOOK - RESPOSTA AS PERGUNTAS DO CHATBOT
@@ -115,8 +105,8 @@ router.post('/webhook', function(req, res) {
                     var eUsuario = flag;
                     if(eUsuario){
                       nomeUsua = content[0].NOME_USUA;
-                      var userID = content[0].USUARIO_ID;
-                      sendTextMessage(event.sender.id, 'Seja bem vindo '+ nomeUsua +' à clínica Ateliê do Sorriso. Sou o AssistBot, seu assistente de atendimento!');
+                      userID = content[0].USUARIO_ID;
+                      mensagens.sendTextMessage(event.sender.id, 'Seja bem vindo '+ nomeUsua +' à clínica Ateliê do Sorriso. Sou o AssistBot, seu assistente de atendimento!');
                       /* Verificar se tem atendimento */
                       verificaMarcacao(event.sender.id, function(err, flag, rows) {
                          if(err){
@@ -130,15 +120,17 @@ router.post('/webhook', function(req, res) {
                               agenMarcado = true;
                               profID = rows[0].PROF_ID;
                               estados[event.sender.id] = 'confirma_atendimento';
+                              atualizaEstado(estados[event.sender.id], event.sender.id);
                               setTimeout(function(){
-                                sendTextMessage(event.sender.id, 'Verifiquei nos meus registro e vejo que você tem um atendimento!');
+                                mensagens.sendTextMessage(event.sender.id, 'Verifiquei nos meus registro e vejo que você tem um atendimento!');
                               }, 2000);
                               setTimeout(function(){
-                                optionsAtendimento(event.sender.id, nomeProf, horario);
+                                mensagens.optionsAtendimento(event.sender.id, nomeProf, horario, agenMarcado);
                               }, 2500);
                            } else {
-                            sendFirstMenu(event.sender.id); 
+                            mensagens.sendFirstMenu(event.sender.id); 
                             estados[event.sender.id] = "mostrou_menu";
+                            atualizaEstado(estados[event.sender.id], event.sender.id);
                            }
                          }
                       });
@@ -156,9 +148,10 @@ router.post('/webhook', function(req, res) {
                 espeID = 1;
                 verificaDisponibilidade(espeID, event.sender.id, function(err, arrProf, idsProf) {
                   estados[event.sender.id] = "mostrou_menu";
-                  sendTextMessage(event.sender.id, "Certo, irei lhe mostrar as opções de profissionais para a especialidade escolhida!");
+                  atualizaEstado(estados[event.sender.id], event.sender.id);
+                  mensagens.sendTextMessage(event.sender.id, "Certo, irei lhe mostrar as opções de profissionais para a especialidade escolhida!");
                   setTimeout(function(){
-                    optionsMenuProfNovo(arrProf, idsProf, event.sender.id, payload);  
+                    mensagens.optionsMenuProfNovo(arrProf, idsProf, event.sender.id, payload);  
                   }, 2000);
                 });
               break;
@@ -168,10 +161,11 @@ router.post('/webhook', function(req, res) {
                 var payload = 'estetica_prof_';
                 espeID = 2;
                 estados[event.sender.id] = "mostrou_menu";
+                atualizaEstado(estados[event.sender.id], event.sender.id);
                 verificaDisponibilidade(espeID, event.sender.id, function(err, arrProf, idsProf) {
-                  sendTextMessage(event.sender.id, "Certo, irei lhe mostrar as opções de profissionais para a especialidade escolhida!");
+                  mensagens.sendTextMessage(event.sender.id, "Certo, irei lhe mostrar as opções de profissionais para a especialidade escolhida!");
                   setTimeout(function(){
-                    optionsMenuProfNovo(arrProf, idsProf, event.sender.id, payload);  
+                    mensagens.optionsMenuProfNovo(arrProf, idsProf, event.sender.id, payload);  
                   }, 2000);
                 });
               break;
@@ -180,10 +174,11 @@ router.post('/webhook', function(req, res) {
                 var payload = 'cirurgia_prof_';
                 espeID = 3;
                 estados[event.sender.id] = "mostrou_menu";
+                atualizaEstado(estados[event.sender.id], event.sender.id);
                 verificaDisponibilidade(espeID, event.sender.id, function(err, arrProf, idsProf) {
-                  sendTextMessage(event.sender.id, "Certo, irei lhe mostrar as opções de profissionais para a especialidade escolhida!");
+                  mensagens.sendTextMessage(event.sender.id, "Certo, irei lhe mostrar as opções de profissionais para a especialidade escolhida!");
                   setTimeout(function(){
-                    optionsMenuProfNovo(arrProf, idsProf, event.sender.id, payload);  
+                    mensagens.optionsMenuProfNovo(arrProf, idsProf, event.sender.id, payload);  
                   }, 2000);
                 });
               break;
@@ -192,7 +187,7 @@ router.post('/webhook', function(req, res) {
               case 'orto_prof_1':
                 profID = 1;
                 verificaData(profID, event.sender.id, function(err, arrDias){
-                  sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de datas para consulta!');
+                  mensagens.sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de datas para consulta!');
                   setTimeout(function(){
                     mensagensProfissional(err, arrDias, event.sender.id);  
                   }, 1500);
@@ -202,7 +197,7 @@ router.post('/webhook', function(req, res) {
                case 'orto_prof_2':
                 profID = 2;
                 verificaData(profID, event.sender.id, function(err, arrDias){
-                  sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de horários para consulta!');
+                  mensagens.sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de horários para consulta!');
                   setTimeout(function(){
                     mensagensProfissional(err, arrDias, event.sender.id);  
                   }, 1500);
@@ -212,7 +207,7 @@ router.post('/webhook', function(req, res) {
               case 'estetica_prof_2':
                 profID = 2;
                 verificaData(profID, event.sender.id, function(err, arrDias){
-                  sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de horários para consulta!');
+                  mensagens.sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de horários para consulta!');
                   setTimeout(function(){
                     mensagensProfissional(err, arrDias, event.sender.id);  
                   }, 1500);
@@ -222,7 +217,7 @@ router.post('/webhook', function(req, res) {
               case 'estetica_prof_3':
                 profID = 3;
                 verificaData(profID, event.sender.id, function(err, arrDias){
-                  sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de horários para consulta!');
+                  mensagens.sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de horários para consulta!');
                   setTimeout(function(){
                     mensagensProfissional(err, arrDias, event.sender.id);  
                   }, 1500);
@@ -232,7 +227,7 @@ router.post('/webhook', function(req, res) {
               case 'cirurgia_prof_1':
                 profID = 1;
                 verificaData(profID, event.sender.id, function(err, arrDias){
-                  sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de horários para consulta!');
+                  mensagens.sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de horários para consulta!');
                   setTimeout(function(){
                     mensagensProfissional(err, arrDias, event.sender.id);  
                   }, 1500);
@@ -242,21 +237,19 @@ router.post('/webhook', function(req, res) {
               case 'cirurgia_prof_3':
                 profID = 3;
                 verificaData(profID, event.sender.id, function(err, arrDias){
-                  sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de horários para consulta!');
+                  mensagens.sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de horários para consulta!');
                   setTimeout(function(){
                     mensagensProfissional(err, arrDias, event.sender.id);  
                   }, 1500);
                 });
               break;
-              
-              
+
               default:
                 // code
             }
           }
         }  
       });
-      
     });
     /* Resposta ao Facebook, mostrando que recebeu a mensagem */
     res.sendStatus(200);
@@ -277,16 +270,21 @@ function trataMensagem(event) {
   
   /* Identificando as mensagens e as tratando */
   if (messageText) {
-    
-    if (estados[senderID]) {
-      switch (estados[senderID]) {
+    buscaEstado(event.sender.id, function(err, status){
+      statusUsua = status;
+      console.log(statusUsua);
+    //if (estados[senderID]) {
+    if (statusUsua) {
+      //switch (estados[senderID]) {
+      switch (statusUsua) {
         case 'mostrou_menu':
           if(messageText.toUpperCase() == 'SAIR'){
-            sendTextMessage(event.sender.id, 'Obrigado por utilizar nossos serviços. Volte sempre!');
+            mensagens.sendTextMessage(event.sender.id, 'Obrigado por utilizar nossos serviços. Volte sempre!');
             estados[event.sender.id] = "escreveu_sair";
+            atualizaEstado(estados[event.sender.id], event.sender.id);
           } else {
-            sendTextMessage(event.sender.id, 'Desculpe, mas você precisa escolher uma opção do menu!');
-            sendFirstMenu(event.sender.id);  
+            mensagens.sendTextMessage(event.sender.id, 'Desculpe, mas você precisa escolher uma opção do menu!');
+            mensagens.sendFirstMenu(event.sender.id);  
           }
         break;
         
@@ -297,20 +295,22 @@ function trataMensagem(event) {
             } else {
               if (flag){
                 /* Se tiver agendamento, opção de reagendar */
-                sendTextMessage(event.sender.id, 'Seja bem vindo de volta '+ nomeUsua +'!');
+                mensagens.sendTextMessage(event.sender.id, 'Seja bem vindo de volta '+ nomeUsua +'!');
                 setTimeout(function(){
-                  sendTextMessage(event.sender.id, 'Verifiquei nos meus registros, vejo que você tem um agendamento marcado!');
+                  mensagens.sendTextMessage(event.sender.id, 'Verifiquei nos meus registros, vejo que você tem um agendamento marcado!');
                 }, 1500);
                 setTimeout(function(){
                   agenMarcado = true;
                   estados[event.sender.id] = 'confirma_atendimento';
-                  optionsAtendimento(event.sender.id, rows[0].NOME_PROF, horario);
+                  atualizaEstado(estados[event.sender.id], event.sender.id);
+                  mensagens.optionsAtendimento(event.sender.id, rows[0].NOME_PROF, horario, agenMarcado);
                 }, 2000);
               } else {
                 /* Se não tiver agendamento, voltar ao menu inicial */
-                sendTextMessage(event.sender.id, 'Seja bem vindo de volta '+nomeUsua+'! Inicie o passo a passo pelo nosso Menu!');
-                sendFirstMenu(event.sender.id);
+                mensagens.sendTextMessage(event.sender.id, 'Seja bem vindo de volta '+nomeUsua+'! Inicie o passo a passo pelo nosso Menu!');
+                mensagens.sendFirstMenu(event.sender.id);
                 estados[event.sender.id] = "mostrou_menu";
+                atualizaEstado(estados[event.sender.id], event.sender.id);
               }
             }
           });
@@ -318,21 +318,23 @@ function trataMensagem(event) {
         
         case 'cancelou_agendamento':
           if(messageText.toUpperCase() == 'SAIR'){
-            sendTextMessage(event.sender.id, 'Obrigado por utilizar nossos serviços. Volte sempre!');
+            mensagens.sendTextMessage(event.sender.id, 'Obrigado por utilizar nossos serviços. Volte sempre!');
             estados[event.sender.id] = "escreveu_sair";
+            atualizaEstado(estados[event.sender.id], event.sender.id);
           } else {
-            sendTextMessage(event.sender.id, 'Olá '+ nomeUsua + '!'); 
+            mensagens.sendTextMessage(event.sender.id, 'Olá '+ nomeUsua + '!'); 
             setTimeout(function(){
-              sendTextMessage(event.sender.id, 'Vericando seu histórico... Vejo que seu último agendamento foi cancelado. Sendo assim vou lhe mostrar as opções de menu!');
-              sendFirstMenu(event.sender.id);  
+              mensagens.sendTextMessage(event.sender.id, 'Vericando seu histórico... Vejo que seu último agendamento foi cancelado. Sendo assim vou lhe mostrar as opções de menu!');
+              mensagens.sendFirstMenu(event.sender.id);  
             }, 1500);
           }
         break;
         
         case 'escolhe_data':
           if(messageText.toUpperCase() == 'SAIR'){
-            sendTextMessage(event.sender.id, 'Obrigado por utilizar nossos serviços. Volte sempre!');
+            mensagens.sendTextMessage(event.sender.id, 'Obrigado por utilizar nossos serviços. Volte sempre!');
             estados[event.sender.id] = "escreveu_sair";
+            atualizaEstado(estados[event.sender.id], event.sender.id);
           } else {
               var payloadData = event.message.quick_reply;
               dataMarc = messageText;
@@ -342,20 +344,21 @@ function trataMensagem(event) {
                     console.log("Erro de consulta");
                   } else {
                     if(arrHora.length > 0){
-                      /*AQUI*/
-                      sendTextMessage(event.sender.id, 'Certo! Agora irei lhe mostrar as opções de horários para consulta!');
+                      mensagens.sendTextMessage(event.sender.id, 'Certo! Agora irei lhe mostrar as opções de horários para consulta!');
                       setTimeout(function() {
-                        menuHorario(arrHora, event.sender.id);
+                        mensagens.menuHorario(arrHora, event.sender.id);
                         }, 1500);
                       estados[event.sender.id] = "escolhe_horario";
+                      atualizaEstado(estados[event.sender.id], event.sender.id);
                     } else {
-                      sendTextMessage(event.sender.id, 'Desculpe o transtorno, mas não temos horários disponiveis para esse profissional!');
+                      mensagens.sendTextMessage(event.sender.id, 'Desculpe o transtorno, mas não temos horários disponiveis para esse profissional!');
                       estados[event.sender.id] = "mostra_menu";
+                      atualizaEstado(estados[event.sender.id], event.sender.id);
                     }
                   }
                 });
               } else {
-                sendTextMessage(event.sender.id, "Desculpe! Mas é necessário escolher uma data");
+                mensagens.sendTextMessage(event.sender.id, "Desculpe! Mas é necessário escolher uma data");
                 setTimeout(function() {
                   verificaData(profID, event.sender.id, function(err, arrDias){
                     mensagensProfissional(err, arrDias, event.sender.id);  
@@ -367,34 +370,38 @@ function trataMensagem(event) {
         
         case "escolhe_horario":
           if(messageText.toUpperCase() == 'SAIR'){
-            sendTextMessage(event.sender.id, 'Obrigado por utilizar nossos serviços. Volte sempre!');
+            mensagens.sendTextMessage(event.sender.id, 'Obrigado por utilizar nossos serviços. Volte sempre!');
             estados[event.sender.id] = "escreveu_sair";
+            atualizaEstado(estados[event.sender.id], event.sender.id);
           } else {
               var payloadHora = event.message.quick_reply;
               horaMarc = messageText;
               horario = dataMarc + ' às ' + horaMarc;
               if (payloadHora) {
                 estados[event.sender.id] = "confirma_atendimento";
+                atualizaEstado(estados[event.sender.id], event.sender.id);
                 confirmaAtendimento(profID, event.sender.id, function(err, nomeProf){
                   if(err){
                     console.log(err);
                   } else {
-                    optionsAtendimento(event.sender.id, nomeProf, horario);
+                    mensagens.optionsAtendimento(event.sender.id, nomeProf, horario, agenMarcado);
                   }
                 });
               } else {
-                sendTextMessage(event.sender.id, "Desculpe! Mas é necessário escolher um horário");
+                mensagens.sendTextMessage(event.sender.id, "Desculpe! Mas é necessário escolher um horário");
                 setTimeout(function() {
                   verificaHorario(profID, dataMarc, function(err, arrHora) {
                     if (err) {
                       console.log("Erro de consulta");
                     } else {
                       if(arrHora.length > 0){
-                        menuHorario(arrHora, event.sender.id);
+                        mensagens.menuHorario(arrHora, event.sender.id);
                         estados[event.sender.id] = "escolhe_horario";
+                        atualizaEstado(estados[event.sender.id], event.sender.id);
                       } else {
-                        sendTextMessage(event.sender.id, 'Desculpe o transtorno, mas não temos horários disponiveis para esse profissional!');
+                        mensagens.sendTextMessage(event.sender.id, 'Desculpe o transtorno, mas não temos horários disponiveis para esse profissional!');
                         estados[event.sender.id] = "mostra_menu";
+                        atualizaEstado(estados[event.sender.id], event.sender.id);
                       }
                     }
                   }); 
@@ -405,51 +412,52 @@ function trataMensagem(event) {
         
         case 'confirma_atendimento':
           if(messageText.toUpperCase() == 'CONFIRMAR') {
-            dataMarc = formataDataUS (dataMarc);
-            var horaActually = pegaHoraAgora();
-            var hh = horaMarc.substring(0,2) - 2; /* Aviso duas horas antes do atendimento */
+            console.log('aqui');
+            dataMarc = functions.formataDataUS(dataMarc);
+            var horaActually = functions.pegaHoraAgora();
+            var hh = parseInt(horaMarc.substring(0,2)) + 1; /* Aviso duas horas antes do atendimento */
             var mm = horaMarc.substring(3,5);
             var horarioAviso = hh+':'+mm;
-            if(!agenMarcado){
-              addMarcacao(event.sender.id, profID, dataMarc, horaMarc);
-            } else {
-              sendTextMessage(event.sender.id, "Obrigado pela preferência, seu horário foi agendado com sucesso!");
-              setTimeout(function() {
-                  verLocation(event.sender.id);
-              }, 1000);
-              if(dataMarc == dataAtual && horaActually < horarioAviso){
-                setTimeout(function() {
-                    sendTextMessage(senderID, "Aviso! Caso queira receber uma mensagem de lembrete do seu agendamento, não apague a conversa!");
-                }, 1500);
-              }
-            }
+            
             var data = new Date();
             var dia = data.getDate();
             var mes = data.getMonth() + 1;
             if(mes < 10){
               mes = '0'+mes;
             }
+            if(dia < 10){
+              dia = '0'+dia;
+            }
             var ano = data.getFullYear();
             var dataAtual = dia+'/'+mes+'/'+ano;
-            console.log(horarioAviso);
-            console.log(dataAtual);
-            dataMarc = dateFormat(dataMarc, 'dd/mm/yyyy');
-            console.log(dataMarc);
-            timeOut1 = setInterval(function() {
-              var horaAtual = pegaHoraAgora();
-              console.log(horaAtual);
-              if(dataMarc == dataAtual && horaAtual == horarioAviso) {
-                /* Aviso do Agendamento */
-                sendTextMessage(event.sender.id, 'Olá, estou passando para lembra que você tem um agendamento há algumas horas... Seu horário é com a Dr. '+nomeProf+' às '+ horario.substring(14, 19));
-                clearInterval(timeOut1);
-              } else if(dataMarc == dataAtual && horaAtual > horarioAviso) {
-                console.log('teste');
-                clearInterval(timeOut1);
-              }
-            }, 60000);
+            
+            if(!agenMarcado){
+              addMarcacao(event.sender.id, profID, dataMarc, horaMarc);
+            } else {
+              mensagens.sendTextMessage(event.sender.id, "Obrigado pela preferência, seu horário foi agendado com sucesso!");
+              setTimeout(function() {
+                  mensagens.verLocation(event.sender.id);
+              }, 1000);
+            }
             estados[event.sender.id] = 'agendado';
+            atualizaEstado(estados[event.sender.id], event.sender.id);
+            dataMarc = dateFormat(dataMarc, 'dd/mm/yyyy');
+            var dateAviso = new Date(dataMarc.substr(6,4), dataMarc.substr(3,2) - 1, dataMarc.substr(0,2), hh, mm, 00);
+            console.log(dateAviso);
+            console.log(new Date());
+            console.log(dateAviso > new Date());
+            if(dateAviso > new Date()){
+              /* Aviso do Agendamento */
+              j = scheduler.scheduleJob(dateAviso, function(){
+                  console.log(dateAviso);
+                  mensagens.sendTextMessage(event.sender.id, 'Olá, estou passando para lembra que você tem um agendamento há algumas horas... Seu horário é com a Dr. '+nomeProf+' às '+ horario.substring(14, 19));
+              });
+            }
           } else if (messageText.toUpperCase() == 'CANCELAR') {
             /* Verificar se tem agendamento, caso sim: excluir | caso não: voltar ao menu */
+            if(dateAviso > new Date()){
+              j.cancel();
+            }
             verificaMarcacao(event.sender.id, function(err, flag, rows) {
               if(err){
                 console.log(err);
@@ -467,7 +475,8 @@ function trataMensagem(event) {
                          if(content) {
                           agenMarcado = false;
                           estados[event.sender.id] = "cancelou_agendamento";
-                          sendTextMessage(event.sender.id, 'Seu agendamento foi cancelado! Obrigado pelo contato.');
+                          atualizaEstado(estados[event.sender.id], event.sender.id);
+                          mensagens.sendTextMessage(event.sender.id, 'Seu agendamento foi cancelado! Obrigado pelo contato.');
                         } else {
                           console.log('Erro no update da Agenda');
                         }
@@ -476,8 +485,9 @@ function trataMensagem(event) {
                    });
                  } else {
                    estados[event.sender.id] = "mostrou_menu";
-                   sendTextMessage(event.sender.id, 'Como não confirmou sua consulta, vou lhe dar as opções de menu novamente');
-                   sendFirstMenu(event.sender.id);
+                   atualizaEstado(estados[event.sender.id], event.sender.id);
+                   mensagens.sendTextMessage(event.sender.id, 'Como não confirmou sua consulta, vou lhe dar as opções de menu novamente');
+                   mensagens.sendFirstMenu(event.sender.id);
                  }
                }
             });
@@ -506,32 +516,41 @@ function trataMensagem(event) {
                             });
                           }
                        });
-                        menuOptionsAgen(arrDias, senderID);
-                        estados[senderID] = 'escolhe_data';
+                        mensagens.sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de datas para consulta!');
+                        setTimeout(function(){
+                          mensagens.menuOptionsAgen(arrDias, senderID);
+                          estados[senderID] = 'escolhe_data';
+                          atualizaEstado(estados[event.sender.id], event.sender.id);
+                        }, 2000);
                       } else {
-                        sendTextMessage(senderID, 'Desculpe o transtorno, mas não temos horários disponiveis para esse profissional!');
-                        optionsAtendimento(event.sender.id, nomeProf, horario);
+                        mensagens.sendTextMessage(senderID, 'Desculpe o transtorno, mas não temos horários disponiveis para esse profissional!');
+                        mensagens.optionsAtendimento(event.sender.id, nomeProf, horario, agenMarcado);
                         estados[senderID] = 'confirma_atendimento';
+                        atualizaEstado(estados[event.sender.id], event.sender.id);
                       }
                     });
                  } else {
                    estados[event.sender.id] = "mostrou_menu";
-                   sendTextMessage(event.sender.id, 'Como não confirmou sua consulta, vou lhe dar as opções de Menu novamente!');
-                   sendFirstMenu(event.sender.id);
+                   atualizaEstado(estados[event.sender.id], event.sender.id);
+                   mensagens.sendTextMessage(event.sender.id, 'Como não confirmou sua consulta, vou lhe dar as opções de Menu novamente!');
+                   mensagens.sendFirstMenu(event.sender.id);
                  }
                }
             });
           } else {
-            sendTextMessage(event.sender.id, 'Desculpe, mas não consegui compreender sua resposta');
-            optionsAtendimento(event.sender.id, nomeProf, horario);
+            mensagens.sendTextMessage(event.sender.id, 'Desculpe, mas não consegui compreender sua resposta');
+            mensagens.optionsAtendimento(event.sender.id, nomeProf, horario, agenMarcado);
           }
         break;
         
         case 'agendado':
-          clearInterval(timeOut1);
+          if(dateAviso > new Date()){
+            j.cancel();
+          }
           if(messageText.toUpperCase() == 'SAIR'){
-              sendTextMessage(event.sender.id, 'Obrigado por utilizar nossos serviços. Volte sempre!');
+              mensagens.sendTextMessage(event.sender.id, 'Obrigado por utilizar nossos serviços. Volte sempre!');
               estados[event.sender.id] = "escreveu_sair";
+              atualizaEstado(estados[event.sender.id], event.sender.id);
           } else {
             verificaMarcacao(event.sender.id, function(err, flag, rows){
               if(err){
@@ -539,20 +558,22 @@ function trataMensagem(event) {
               } else {
                 if (flag){
                   /* Se tiver agendamento, opção de reagendar */
-                  sendTextMessage(event.sender.id, 'Seja bem vindo de volta '+ nomeUsua +'!');
+                  mensagens.sendTextMessage(event.sender.id, 'Seja bem vindo de volta '+ nomeUsua +'!');
                   setTimeout(function(){
-                    sendTextMessage(event.sender.id, 'Verifiquei nos meus registros, vejo que você tem um agendamento marcado!');
+                    mensagens.sendTextMessage(event.sender.id, 'Verifiquei nos meus registros, vejo que você tem um agendamento marcado!');
                   }, 1500);
                   setTimeout(function(){
                     agenMarcado = true;
                     estados[event.sender.id] = 'confirma_atendimento';
-                    optionsAtendimento(event.sender.id, rows[0].NOME_PROF, horario);
+                    atualizaEstado(estados[event.sender.id], event.sender.id);
+                    mensagens.optionsAtendimento(event.sender.id, rows[0].NOME_PROF, horario, agenMarcado);
                   }, 2000);
                 } else {
                   /* Se não tiver agendamento, voltar ao menu inicial */
-                  sendTextMessage(event.sender.id, 'Verifiquei nos meus registros, vejo que você não tem nenhum agendamento! Inicie o passo a passo pelo nosso Menu!');
-                  sendFirstMenu(event.sender.id);
+                  mensagens.sendTextMessage(event.sender.id, 'Verifiquei nos meus registros, vejo que você não tem nenhum agendamento! Inicie o passo a passo pelo nosso Menu!');
+                  mensagens.sendFirstMenu(event.sender.id);
                   estados[event.sender.id] = "mostrou_menu";
+                  atualizaEstado(estados[event.sender.id], event.sender.id);
                 }
               }
             });
@@ -567,164 +588,25 @@ function trataMensagem(event) {
       switch (messageText) {
         case 'Oi':
           /* Resposta */
-          sendTextMessage(senderID, 'Oi, tudo bom com você ?');
+          mensagens.sendTextMessage(senderID, 'Oi, tudo bom com você ?');
           break;
           
         case 'Tchau':
           // code
-          sendTextMessage(senderID, 'Obrigado pela visita, VOLTE SEMPRE!');
+          mensagens.sendTextMessage(senderID, 'Obrigado pela visita, VOLTE SEMPRE!');
           break;
         
         default:
           // code
-          sendTextMessage(senderID, 'Não compreendi sua pergunta, pode repetir...');
+          mensagens.sendTextMessage(senderID, 'Não compreendi sua pergunta, pode repetir...');
       }  
     }
+    });
   } else if (attachments){
     /* Tratamento de anexos */
     console.log('Me mandaram anexos');
   }
 }
-
-/* Preparado estrutura da mensagem para resposta (JSON)*/
-function sendTextMessage (senderID, messageText) {
-  var messageData = {
-    recipient: {
-      id: senderID
-    },
-    
-    message: {
-      text: messageText  
-    }
-  }; 
-  callSendApi(messageData);
-}
-
-function verLocation (senderID) {
-  var messageData = {
-      recipient:{
-      id: senderID
-    },
-    message:{
-      attachment:{
-        type:"template",
-        payload:{
-          template_type:"button",
-          text:"Clique aqui para verificar a localização da clínica!",
-          buttons:[
-            {
-              type:"web_url",
-              url:"https://www.google.com.br/maps/place/R.+Piau%C3%AD,+Salvador+-+BA/@-13.0059131,-38.466716,17z/data=!3m1!4b1!4m5!3m4!1s0x7161b5e1ed0022f:0x3d2c88079b3d025f!8m2!3d-13.0059131!4d-38.4645273",
-              title:"Abrir no Maps"
-            }
-          ]
-        }
-      }
-    }
-  };
-  callSendApi(messageData);
-}
-
-/*function menuOptionsProf (arrProf, idsProf, senderID, payload) {
- var buttons = new Array();
- var posicao;
-  for(var i = 0; i < arrProf.length; i++){
-   posicao = idsProf[i];
-    buttons[i] = { type: "postback", title: ''+ arrProf[i] +'', payload: ''+ payload + posicao +'' };
-  }
-   var messageData = {
-    recipient: {
-      id: senderID
-    },
-    
-    message: {
-      attachment: {
-        type: 'template',
-        payload: {
-          template_type: 'button',
-          text: 'Para tal serviço temos os seguintes dentistas ?',
-          buttons:  buttons
-        }
-      }
-    }
-  };
-  callSendApi(messageData);
-}*/
-
-function menuHorario (arrHora, senderID) {
-  var quick_replies = new Array();
-  for(var i = 0; i < arrHora.length; i++) {
-    quick_replies[i] = { content_type: "text", title: arrHora[i], payload: "hora_"+i+'' };
-  }
-   var messageData = {
-    recipient:{
-      id: senderID
-    },
-    
-    message:{
-      text: "Escolha um horário:",
-      quick_replies: quick_replies 
-    }
-  };
-  callSendApi(messageData);
-}
-
-function menuOptionsAgen (arrDias, senderID) {
-  var quick_replies = new Array();
-  console.log(arrDias);
-  for(var i = 0; i < arrDias.length; i++){
-    quick_replies[i] = { content_type: "text", title: arrDias[i], payload: "data_"+i+'' };
-  }
-   var messageData = {
-    recipient:{
-      id: senderID
-    },
-    message:{
-      text: "Escolha uma data:",
-      quick_replies: quick_replies 
-    }
-  };
-  callSendApi(messageData);
-}
-
-function sendFirstMenu (senderID) {
-   var messageData = {
-    recipient: {
-      id: senderID
-    },
-    message: {
-      attachment: {
-        type: 'template',
-        payload: {
-          template_type: 'button',
-          text: 'O Ateliê do Sorriso dispõe dos seguintes serviços:',
-          buttons: [
-            {
-              type: 'postback',
-              title: 'Ortodontia',
-              payload: 'clicou_orto'
-            },
-            
-            {
-              type: 'postback',
-              title: 'Estética Bucal',
-              payload: 'clicou_estetica'
-            },
-            
-            {
-              type: 'postback',
-              title: 'Cirurgias',
-              payload: 'clicou_cirurgia'
-            }
-            
-          ]
-        }
-      }
-    }
-  };
-  callSendApi(messageData);
-}
-
 
 /* Função do facebook para resposta à mensagem  */
 function callSendApi(messageData) {
@@ -768,100 +650,32 @@ function getUsuario(userID) {
   });
 }
 
-function confirmaAtendimento(profID, senderID, callback){
-  var sSQL = 'SELECT NOME_PROF FROM `profissional` WHERE PROF_ID ='+ profID;
-  connection.query(sSQL, function(err, rows, fields) {  
-    nomeProf = rows[0].NOME_PROF;
-    callback(null, nomeProf);
-  });
-}
-
-function optionsAtendimento (senderID, nomeProf, horario) {
-  var recomecar;
-  if (agenMarcado) {
-    recomecar = { content_type: "text", title: 'Remarcar', payload: 'DEVELOPER_DEFINED_PAYLOAD_FOR_PICKING_BLACK' };
-  } 
-  else {
-    recomecar = { content_type: "text", title: '', payload: 'DEVELOPER_DEFINED_PAYLOAD_FOR_PICKING_BLACK' };
-  }
-   var messageData = {
-   recipient:{
-    id: senderID
-  },
-  message:{
-    //text : 'Deseja confirmar seu horário com a Dr. '+nomeProf+' no dia '+ horario +' ?',
-    text : 'Então ficou agendado sua consulta com Dr(a). '+nomeProf+' no dia '+ horario +'. Deseja confirmar o agendamento ?',
-    quick_replies:[
-      {
-        content_type:"text",
-        title: 'Cancelar',
-        payload:"DEVELOPER_DEFINED_PAYLOAD_FOR_PICKING_RED"
-      },
-      {
-        content_type:"text",
-        title: 'Confirmar',
-        payload:"DEVELOPER_DEFINED_PAYLOAD_FOR_PICKING_GREEN"
-      },
-      recomecar
-    ]
-  }
-};
-  callSendApi(messageData);
-}
-
-function optionsMenuProfNovo (arrProf, idsProf, senderID, payload) {
-  var opcoes = new Array();
-  var posicao;
-  for(var i = 0; i < arrProf.length; i++){
-   posicao = idsProf[i];
-   if (posicao == 1){ /* Barbara */
-     var image_url = "https://www.thecheekypanda.co.uk/wp-content/uploads/2014/08/julie-avatar-260x300.jpg";
-   } else if (posicao == 2) { /* Fábio */
-     var image_url = "https://st2.depositphotos.com/1007566/11541/v/950/depositphotos_115416446-stock-illustration-avatar-business-man-vector-graphic.jpg";
-   } else if (posicao == 3) { /* Isabella */
-     var image_url = "http://4.bp.blogspot.com/-Ote1BConuRM/UOSy0TSyI3I/AAAAAAAAGPA/nMyTRJX1Rco/s1600/Paula+avatar.jpg";
-   }
-    opcoes[i] = { 
-      title: arrProf[i],
-      image_url: image_url,
-      subtitle: "Clínica Ateliê do Sorriso",
-      buttons:[
-        {
-          type: "web_url",
-          url: "https://www.google.com.br/maps/place/R.+Piau%C3%AD,+Salvador+-+BA/@-13.0059131,-38.466716,17z/data=!3m1!4b1!4m5!3m4!1s0x7161b5e1ed0022f:0x3d2c88079b3d025f!8m2!3d-13.0059131!4d-38.4645273",
-          title: "Ver Perfil"
-        },
-        {
-          type: "postback",
-          title: "Escolher horário",
-          payload: ''+ payload + posicao +''
-        }              
-      ]      
-    }; 
-  }
-   var messageData = {
-      recipient: {
-        id: senderID
-      },
-    message:{
-      attachment:{
-        type: "template",
-        payload:{
-          template_type: "generic",
-          elements: opcoes
-        }
-      }
+function mensagensProfissional(err, arrDias, senderID){
+  if(err) {
+    console.log(err);
+  } else {
+    if(arrDias.length != 0) {
+      mensagens.menuOptionsAgen(arrDias, senderID);
+      estados[senderID] = 'escolhe_data';
+      atualizaEstado(estados[senderID], senderID);
+    } else {
+      mensagens.sendTextMessage(senderID, 'Desculpe o transtorno, mas não temos horários disponiveis para esse profissional!');
+      mensagens.sendFirstMenu(senderID);
+      estados[senderID] = 'mostrou_menu';
+      atualizaEstado(estados[senderID], senderID);
     }
-  };
-  callSendApi(messageData);
+  }
 }
 
-function insereUsuario(userID, nomeUsua){
-  var sSQL = 'INSERT INTO `usuario` VALUES ('+userID+', "'+nomeUsua+'")';
+/* Funções SQL */
+
+function insereUsuario(userID, nomeUsua) {
+  estados[userID] = 'mostrou_menu';
+  var sSQL = 'INSERT INTO `usuario` VALUES ('+userID+', "'+nomeUsua+'" , "'+ estados[userID] +'")';
+  console.log(sSQL);
   connection.query(sSQL, function(err, rows, fields) {  
-    sendTextMessage(userID, 'Seja bem vindo '+ nomeUsua +' à clínica Ateliê do Sorriso, sou o AssistBot, seu assistente de atendimento!');
-    sendFirstMenu(userID); 
-    estados[userID] = 'mostrou_menu';
+    mensagens.sendTextMessage(userID, 'Seja bem vindo '+ nomeUsua +' à clínica Ateliê do Sorriso, sou o AssistBot, seu assistente de atendimento!');
+    mensagens.sendFirstMenu(userID); 
   });
 }
 
@@ -888,12 +702,9 @@ function addMarcacao(senderID, profID, dataMarc, horaMarc){
       updateAgenda(marcadoAgen, dataMarc, horaMarc, profID, function(err, content){
         if(content) {
           agenMarcado = true;
-          sendTextMessage(senderID, "Aviso! Caso queira receber uma mensagem de lembrete do seu agendamento, não apague a conversa!");
+          mensagens.verLocation(senderID);
           setTimeout(function(){
-            verLocation(senderID);
-          }, 1000);
-          setTimeout(function(){
-            sendTextMessage(senderID, "Obrigado pela preferência, seu horário foi agendado com sucesso!"); 
+            mensagens.sendTextMessage(senderID, "Obrigado pela preferência, seu horário foi agendado com sucesso!"); 
           }, 1500);
         } else {
           console.log('Erro no update da Agenda');
@@ -929,7 +740,7 @@ function deletaAgendamento(marcID, callback){
 }
 
 function verificaMarcacao(senderID, callback){
-  var dataAtual = pegaDataAtual();
+  var dataAtual = functions.pegaDataAtual();
   var sSQL = 'SELECT M.MARC_ID, P.NOME_PROF, M.DATA_MARC, M.HORA_MARC, P.PROF_ID FROM `marcacao` M';
   sSQL += ' LEFT JOIN `profissional` P ON P.PROF_ID = M.PROF_ID';
   sSQL += '  WHERE M.USUARIO_ID ='+ senderID +' AND M.DATA_MARC >= "'+dataAtual+'"';
@@ -948,40 +759,35 @@ function verificaMarcacao(senderID, callback){
 }
 
 function verificaData(profID, senderID, callback) {
-  var dataHoje = pegaDataAtual();
+  var dataHoje = functions.pegaDataAtual();
   /* Ajeitar consulta posteriormente */
   var sSQL = 'SELECT A.DATA_AGEN FROM `agenda` A'; 
       sSQL += ' LEFT JOIN `profissional` P ON P.PROF_ID = A.PROF_ID';
       sSQL += ' WHERE A.PROF_ID = ' + profID;
       sSQL += ' AND A.DATA_AGEN >= "' + dataHoje +'"';
-      //sSQL += ' AND A.HORA_AGEN >= "' + horaAgora +'"';
       sSQL += ' AND A.MARCADO_AGEN = 0';
       sSQL += ' GROUP BY (A.DATA_AGEN)';
   var arrDias = [];
   connection.query(sSQL, function(err, rows, fields) {
     for(var i = 0; i < rows.length; i++){
       arrDias[i] = dateFormat(rows[i].DATA_AGEN, 'dd/mm/yyyy');
-      //arrHora[i] = rows[i].HORA_AGEN.substring(0,5);
     }
     callback(null, arrDias);
   });
 }
 
 function verificaHorario(profID, dataAgen, callback) {
-  dataAgen = formataDataBanco(dataAgen);
+  dataAgen = functions.formataDataBanco(dataAgen);
   /* Ajeitar consulta posteriormente */
   var sSQL = 'SELECT A.HORA_AGEN FROM `agenda` A'; 
       sSQL += ' LEFT JOIN `profissional` P ON P.PROF_ID = A.PROF_ID';
       sSQL += ' WHERE A.PROF_ID = ' + profID;
       sSQL += ' AND A.DATA_AGEN = "' + dataAgen +'"';
-      //sSQL += ' AND A.HORA_AGEN >= "' + horaAgora +'"';
       sSQL += ' AND A.MARCADO_AGEN = 0';
       sSQL += ' ORDER BY A.HORA_AGEN';
-  console.log(sSQL);
   var arrHora = [];
   connection.query(sSQL, function(err, rows, fields) {
     for(var i = 0; i < rows.length; i++){
-      //arrDias[i] = dateFormat(rows[i].DATA_AGEN, 'dd/mm/yyyy');
       arrHora[i] = rows[i].HORA_AGEN.substring(0,5);
     }
     callback(null, arrHora);
@@ -1001,64 +807,28 @@ function verificaDisponibilidade(espeID, senderID, callback) {
       idsProf[i] = rows[i].PROF_ID;
     }
     callback(null, arrProf, idsProf);
-    //menuOptionsProf(arrProf, senderID);
   });
 }
 
-function mensagensProfissional(err, arrDias, senderID){
-  if(err) {
-    console.log(err);
-  } else {
-    if(arrDias.length != 0) {
-      menuOptionsAgen(arrDias, senderID);
-      estados[senderID] = 'escolhe_data';
-    } else {
-      sendTextMessage(senderID, 'Desculpe o transtorno, mas não temos horários disponiveis para esse profissional!');
-      sendFirstMenu(senderID);
-      estados[senderID] = 'mostrou_menu';
-    }
-  }
+function confirmaAtendimento(profID, senderID, callback){
+  var sSQL = 'SELECT NOME_PROF FROM `profissional` WHERE PROF_ID ='+ profID;
+  connection.query(sSQL, function(err, rows, fields) {  
+    nomeProf = rows[0].NOME_PROF;
+    callback(null, nomeProf);
+  });
 }
 
-function formataDataUS (data){
-  var dia = data.substring(0,2);
-  var mes = data.substring(3,5);
-  var ano = data.substring(6,10);
-  data = mes +'/'+ dia +'/'+ ano;
-  data = dateFormat(data);
-  return data;
+function atualizaEstado(estado, senderID) {
+  var sSQL = 'UPDATE `usuario` SET STATUS_USUA = "'+ estado +'" WHERE USUARIO_ID = ' +senderID;
+  connection.query(sSQL);
 }
 
-function formataDataBanco (data){
-  var dia = data.substring(0,2);
-  var mes = data.substring(3,5);
-  var ano = data.substring(6,10);
-  data =  ano +'/'+ mes +'/'+ dia
-  data = dateFormat(data, 'yyyy/mm/dd');
-  return data;
-}
-
-function pegaDataAtual(){
-  var data = new Date();
-  var dia = data.getDate();
-  var mes = data.getMonth() + 1;
-  if(mes < 10){
-    mes = '0'+mes;
-  }
-  var ano = data.getFullYear();
-  var dataAtual = ano+'/'+mes+'/'+dia;
-  return dataAtual;
-}
-
-function pegaHoraAgora(){
-  var data = new Date();
-  var hora = data.getHours() - 3;
-  var min  = data.getMinutes();
-  if((min - 10) < 0){
-    min = '0'+min;
-  }
-  var horaAgora = hora+':'+min;
-  return horaAgora;
+function buscaEstado(senderID, callback) {
+  var sSQL = 'SELECT * FROM `usuario` WHERE USUARIO_ID = '+ senderID;
+  connection.query(sSQL, function(err, rows, fields) {  
+    statusUsua = rows[0].STATUS_USUA;
+    callback(null, statusUsua);
+  });
 }
 
 io.on('connection', function (socket) {
