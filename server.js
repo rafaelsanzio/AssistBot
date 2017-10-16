@@ -17,8 +17,6 @@ var mensagens = require('./messages.js');
 
 var scheduler = require('node-schedule');
 
-//var rule = new scheduler.RecurrenceRule();
-
 var mysql = require('mysql');
 var connection = mysql.createConnection({  
   host     : 'localhost',
@@ -48,17 +46,10 @@ router.use(express.static(path.resolve(__dirname, 'client')));
 router.use(bodyParser.json());
 router.use(bodyParser.urlencoded({ extended: false }));
 
-var messages = [];
-var sockets = [];
-var estados = [];
-var userID;
-var profID;
-var espeID;
-var dataMarc;
-var horaMarc;
-var nomeUsua;
-var nomeProf;
-var horario;
+var messages = [], sockets = [], estados = [];
+var userID, profID, espeID;
+var dataMarc, horaMarc, horario, mesEmExtenso;
+var nomeUsua, nomeProf;
 var j;
 var statusUsua;
 var agenMarcado = false;
@@ -106,7 +97,7 @@ router.post('/webhook', function(req, res) {
                     if(eUsuario){
                       nomeUsua = content[0].NOME_USUA;
                       userID = content[0].USUARIO_ID;
-                      mensagens.sendTextMessage(event.sender.id, 'Seja bem vindo '+ nomeUsua +' à clínica Ateliê do Sorriso. Sou o AssistBot, seu assistente de atendimento!');
+                      mensagens.sendTextMessage(event.sender.id, 'Seja bem vindo '+ nomeUsua +' à clínica Ateliê do Sorriso. Sou a NicoleBot, sua assistente de atendimento virtual!');
                       /* Verificar se tem atendimento */
                       verificaMarcacao(event.sender.id, function(err, flag, rows) {
                          if(err){
@@ -186,12 +177,18 @@ router.post('/webhook', function(req, res) {
               /* Profissionais */
               case 'orto_prof_1':
                 profID = 1;
-                verificaData(profID, event.sender.id, function(err, arrDias){
+                verificaMeses(profID, event.sender.id, function (err, arrMeses, numMes){
+                  mensagens.sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de meses para consulta!');
+                  setTimeout(function(){
+                    mensagensProfissional(err, arrMeses, event.sender.id);  
+                  }, 1500);
+                });
+                /*verificaData(profID, event.sender.id, function(err, arrDias){
                   mensagens.sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de datas para consulta!');
                   setTimeout(function(){
                     mensagensProfissional(err, arrDias, event.sender.id);  
                   }, 1500);
-                });
+                });*/
               break;
               
                case 'orto_prof_2':
@@ -273,9 +270,7 @@ function trataMensagem(event) {
     buscaEstado(event.sender.id, function(err, status){
       statusUsua = status;
       console.log(statusUsua);
-    //if (estados[senderID]) {
     if (statusUsua) {
-      //switch (estados[senderID]) {
       switch (statusUsua) {
         case 'mostrou_menu':
           if(messageText.toUpperCase() == 'SAIR'){
@@ -327,6 +322,44 @@ function trataMensagem(event) {
               mensagens.sendTextMessage(event.sender.id, 'Vericando seu histórico... Vejo que seu último agendamento foi cancelado. Sendo assim vou lhe mostrar as opções de menu!');
               mensagens.sendFirstMenu(event.sender.id);  
             }, 1500);
+          }
+        break;
+        
+        case 'escolhe_mes':
+          if(messageText.toUpperCase() == 'SAIR'){
+            mensagens.sendTextMessage(event.sender.id, 'Obrigado por utilizar nossos serviços. Volte sempre!');
+            estados[event.sender.id] = "escreveu_sair";
+            atualizaEstado(estados[event.sender.id], event.sender.id);
+          } else {
+              var payloadData = event.message.quick_reply;
+              mesEmExtenso = messageText;
+              if (payloadData) {
+                verificaData(profID, event.sender.id, function(err, arrDias) {
+                  if (err) {
+                    console.log("Erro de consulta");
+                  } else {
+                    if(arrDias.length > 0){
+                      mensagens.sendTextMessage(event.sender.id, 'Certo! Agora irei lhe mostrar as opções de datas para consulta!');
+                      setTimeout(function() {
+                        mensagens.menuOptionsAgen(arrDias, event.sender.id);
+                        }, 1500);
+                      estados[event.sender.id] = "escolhe_data";
+                      atualizaEstado(estados[event.sender.id], event.sender.id);
+                    } else {
+                      mensagens.sendTextMessage(event.sender.id, 'Desculpe o transtorno, mas não temos horários disponiveis para esse profissional!');
+                      estados[event.sender.id] = "mostra_menu";
+                      atualizaEstado(estados[event.sender.id], event.sender.id);
+                    }
+                  }
+                });
+              } else {
+                mensagens.sendTextMessage(event.sender.id, "Desculpe! Mas é necessário escolher uma mês");
+                setTimeout(function() {
+                  verificaMeses(profID, event.sender.id, function(err, arrDias){
+                    mensagensProfissional(err, arrDias, event.sender.id);  
+                  });
+                }, 2000);
+              }
           }
         break;
         
@@ -412,13 +445,12 @@ function trataMensagem(event) {
         
         case 'confirma_atendimento':
           if(messageText.toUpperCase() == 'CONFIRMAR') {
-            console.log('aqui');
             dataMarc = functions.formataDataUS(dataMarc);
             var horaActually = functions.pegaHoraAgora();
             var hh = parseInt(horaMarc.substring(0,2)) + 1; /* Aviso duas horas antes do atendimento */
             var mm = horaMarc.substring(3,5);
             var horarioAviso = hh+':'+mm;
-            
+
             var data = new Date();
             var dia = data.getDate();
             var mes = data.getMonth() + 1;
@@ -450,7 +482,7 @@ function trataMensagem(event) {
               /* Aviso do Agendamento */
               j = scheduler.scheduleJob(dateAviso, function(){
                   console.log(dateAviso);
-                  mensagens.sendTextMessage(event.sender.id, 'Olá, estou passando para lembra que você tem um agendamento há algumas horas... Seu horário é com a Dr. '+nomeProf+' às '+ horario.substring(14, 19));
+                  mensagens.sendTextMessage(event.sender.id, 'Olá, estou passando para lembrar que você tem um agendamento há algumas horas... Seu horário é com a Dr. '+nomeProf+' às '+ horario.substring(14, 19));
               });
             }
           } else if (messageText.toUpperCase() == 'CANCELAR') {
@@ -500,8 +532,8 @@ function trataMensagem(event) {
                     dataMarc = dateFormat(rows[0].DATA_MARC, 'yyyy/mm/dd');
                     horaMarc = rows[0].HORA_MARC.substring(0,5);
                     profID = rows[0].PROF_ID;
-                    verificaData(profID, event.sender.id, function(err, arrDias){
-                      if(arrDias.length != 0) {
+                    verificaMeses(profID, event.sender.id, function(err, arrMeses){
+                      if(arrMeses.length != 0) {
                         deletaAgendamento(rows[0].MARC_ID, function(err, deleta){
                         if(err) {
                          console.log(err);
@@ -516,10 +548,10 @@ function trataMensagem(event) {
                             });
                           }
                        });
-                        mensagens.sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de datas para consulta!');
+                        mensagens.sendTextMessage(event.sender.id, 'Ok! Agora irei lhe mostrar as opções de mês para consulta!');
                         setTimeout(function(){
-                          mensagens.menuOptionsAgen(arrDias, senderID);
-                          estados[senderID] = 'escolhe_data';
+                          mensagens.menuOptionsMeses(arrMeses, senderID);
+                          estados[senderID] = 'escolhe_mes';
                           atualizaEstado(estados[event.sender.id], event.sender.id);
                         }, 2000);
                       } else {
@@ -650,13 +682,13 @@ function getUsuario(userID) {
   });
 }
 
-function mensagensProfissional(err, arrDias, senderID){
+function mensagensProfissional(err, arrMeses, senderID){
   if(err) {
     console.log(err);
   } else {
-    if(arrDias.length != 0) {
-      mensagens.menuOptionsAgen(arrDias, senderID);
-      estados[senderID] = 'escolhe_data';
+    if(arrMeses.length != 0) {
+      mensagens.menuOptionsMeses(arrMeses, senderID);
+      estados[senderID] = 'escolhe_mes';
       atualizaEstado(estados[senderID], senderID);
     } else {
       mensagens.sendTextMessage(senderID, 'Desculpe o transtorno, mas não temos horários disponiveis para esse profissional!');
@@ -674,7 +706,7 @@ function insereUsuario(userID, nomeUsua) {
   var sSQL = 'INSERT INTO `usuario` VALUES ('+userID+', "'+nomeUsua+'" , "'+ estados[userID] +'")';
   console.log(sSQL);
   connection.query(sSQL, function(err, rows, fields) {  
-    mensagens.sendTextMessage(userID, 'Seja bem vindo '+ nomeUsua +' à clínica Ateliê do Sorriso, sou o AssistBot, seu assistente de atendimento!');
+    mensagens.sendTextMessage(userID, 'Seja bem vindo '+ nomeUsua +' à clínica Ateliê do Sorriso, sou a NicoleBot, sua assistente de atendimento virtual!');
     mensagens.sendFirstMenu(userID); 
   });
 }
@@ -760,13 +792,15 @@ function verificaMarcacao(senderID, callback){
 
 function verificaData(profID, senderID, callback) {
   var dataHoje = functions.pegaDataAtual();
-  /* Ajeitar consulta posteriormente */
+  atualizaAgenda(profID); /* Aqui */
   var sSQL = 'SELECT A.DATA_AGEN FROM `agenda` A'; 
       sSQL += ' LEFT JOIN `profissional` P ON P.PROF_ID = A.PROF_ID';
       sSQL += ' WHERE A.PROF_ID = ' + profID;
+      sSQL += ' AND MONTH(A.DATA_AGEN) = "' + functions.mes(mesEmExtenso) +'"';
       sSQL += ' AND A.DATA_AGEN >= "' + dataHoje +'"';
       sSQL += ' AND A.MARCADO_AGEN = 0';
       sSQL += ' GROUP BY (A.DATA_AGEN)';
+  console.log(sSQL);
   var arrDias = [];
   connection.query(sSQL, function(err, rows, fields) {
     for(var i = 0; i < rows.length; i++){
@@ -776,9 +810,27 @@ function verificaData(profID, senderID, callback) {
   });
 }
 
+function verificaMeses(profID, senderID, callback) {
+  var dataHoje = functions.pegaDataAtual();
+  var sSQL = 'SELECT MONTH(A.DATA_AGEN) AS MES FROM `agenda` A'; 
+      sSQL += ' LEFT JOIN `profissional` P ON P.PROF_ID = A.PROF_ID';
+      sSQL += ' WHERE A.PROF_ID = ' + profID;
+      sSQL += ' AND A.DATA_AGEN >= "' + dataHoje +'"';
+      sSQL += ' AND A.MARCADO_AGEN = 0';
+      sSQL += ' GROUP BY (MONTH(A.DATA_AGEN))';
+  var arrMeses = [];
+  var numeroMes;
+  connection.query(sSQL, function(err, rows, fields) {
+    for(var i = 0; i < rows.length; i++){
+      numeroMes = rows[i].MES;
+      arrMeses[i] = functions.mesEmExtenso(rows[i].MES);
+    }
+    callback(null, arrMeses, numeroMes);
+  });
+}
+
 function verificaHorario(profID, dataAgen, callback) {
   dataAgen = functions.formataDataBanco(dataAgen);
-  /* Ajeitar consulta posteriormente */
   var sSQL = 'SELECT A.HORA_AGEN FROM `agenda` A'; 
       sSQL += ' LEFT JOIN `profissional` P ON P.PROF_ID = A.PROF_ID';
       sSQL += ' WHERE A.PROF_ID = ' + profID;
@@ -829,6 +881,12 @@ function buscaEstado(senderID, callback) {
     statusUsua = rows[0].STATUS_USUA;
     callback(null, statusUsua);
   });
+}
+
+function atualizaAgenda(profID) {
+  var horaActually = functions.pegaHoraAgora();
+  var sSQL = 'UPDATE `agenda` SET MARCADO_AGEN = 1 WHERE HORA_AGEN <= "'+ horaActually + '" AND PROF_ID =' + profID;
+  connection.query(sSQL);
 }
 
 io.on('connection', function (socket) {

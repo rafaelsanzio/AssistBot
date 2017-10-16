@@ -44,3 +44,63 @@ exports.formataDataBanco = function (data){
   data = dateFormat(data, 'yyyy/mm/dd');
   return data;
 };
+
+exports.mesEmExtenso = function (mes){
+  var sMes; 
+  if(mes == 1){
+    sMes = "Janeiro";
+  } else if(mes == 2){
+    sMes = "Fevereiro";
+  } else if(mes == 3){
+    sMes = "Março";
+  } else if(mes == 4){
+    sMes = "Abril";
+  } else if(mes == 5){
+    sMes = "Maio";
+  } else if(mes == 6){
+    sMes = "Junho";
+  } else if(mes == 7){
+    sMes = "Julho";
+  } else if(mes == 8){
+    sMes = "Agosto";
+  } else if(mes == 9){
+    sMes = "Setembro";
+  } else if(mes == 10){
+    sMes = "Outubro";
+  } else if(mes == 11){
+    sMes = "Novembro";
+  } else if(mes == 12){
+    sMes = "Dezembro";
+  }
+  return sMes;
+};
+
+exports.mes = function (mesEmExtenso){
+  var nMes; 
+  if(mesEmExtenso == "Janeiro"){
+    nMes = 1;
+  } else if(mesEmExtenso == "Fevereiro"){
+    nMes = 2;
+  } else if(mesEmExtenso == "Março"){
+    nMes = 3;
+  } else if(mesEmExtenso == "Abril"){
+    nMes = 4;
+  } else if(mesEmExtenso == "Maio"){
+    nMes = 5;
+  } else if(mesEmExtenso == "Junho"){
+    nMes = 6;
+  } else if(mesEmExtenso == "Julho"){
+    nMes = 7;
+  } else if(mesEmExtenso == "Agosto"){
+    nMes = 8;
+  } else if(mesEmExtenso == "Setembro"){
+    nMes = 9;
+  } else if(mesEmExtenso == "Outubro"){
+    nMes = 10;
+  } else if(mesEmExtenso == "Novembro"){
+    nMes = 11;
+  } else if(mesEmExtenso == "Dezembro"){
+    nMes = 12;
+  }
+  return nMes;
+};

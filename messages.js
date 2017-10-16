@@ -94,7 +94,6 @@ exports.menuHorario = function (arrHora, senderID) {
 
 exports.menuOptionsAgen = function (arrDias, senderID) {
   var quick_replies = new Array();
-  console.log(arrDias);
   for(var i = 0; i < arrDias.length; i++){
     quick_replies[i] = { content_type: "text", title: arrDias[i], payload: "data_"+i+'' };
   }
@@ -110,6 +109,25 @@ exports.menuOptionsAgen = function (arrDias, senderID) {
   callSendApi(messageData);
 };
 
+exports.menuOptionsMeses = function (arrMeses, senderID) {
+  var quick_replies = new Array();
+  for(var i = 0; i < arrMeses.length; i++){
+    quick_replies[i] = { content_type: "text", title: arrMeses[i], payload: "mes_"+i+'' };
+  }
+   var messageData = {
+    recipient:{
+      id: senderID
+    },
+    message:{
+      text: "Escolha um mês:",
+      quick_replies: quick_replies 
+    }
+  };
+  callSendApi(messageData);
+};
+
+
+/* Lembrar de mudar localização */
 exports.verLocation = function (senderID) {
   var messageData = {
       recipient:{
@@ -124,7 +142,7 @@ exports.verLocation = function (senderID) {
           buttons:[
             {
               type:"web_url",
-              url:"https://www.google.com.br/maps/place/R.+Piau%C3%AD,+Salvador+-+BA/@-13.0059131,-38.466716,17z/data=!3m1!4b1!4m5!3m4!1s0x7161b5e1ed0022f:0x3d2c88079b3d025f!8m2!3d-13.0059131!4d-38.4645273",
+              url:"https://www.google.com.br/maps/@-14.2223857,-42.7783909,3a,75y,339.77h,76.53t/data=!3m6!1e1!3m4!1sAWgIQIUyBOSPJWBU3qJGcw!2e0!7i13312!8i6656",
               title:"Abrir no Maps"
             }
           ]
