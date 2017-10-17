@@ -11,19 +11,25 @@ var socketio = require('socket.io');
 var express = require('express');
 var bodyParser = require('body-parser');
 var dateFormat = require('dateformat');
-
 var functions = require('./functions.js');
 var mensagens = require('./messages.js');
-
 var scheduler = require('node-schedule');
 
 var mysql = require('mysql');
-var connection = mysql.createConnection({  
+/*var connection = mysql.createConnection({  
   host     : 'localhost',
   user     : 'rafaelsanzio',
   password : '',
   port     : 3306,
   database : 'c9'
+});*/
+
+var connection = mysql.createConnection({  
+  host     : 'localhost',
+  user     : 'root',
+  password : 'root',
+  port     : 3306,
+  database : 'assistbot'
 });
 
 connection.connect(function(err){
@@ -58,7 +64,7 @@ var agenMarcado = false;
 router.get('/webhook', function(req, res) {
   /* VALIDANDO SENHA */
   if(req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === 'rafa2695'){
-    console.log('Validação Ok');
+    console.log('Validação OK');
     /* Servidor aceitou a requisição */
     res.status(200).send(req.query['hub.challenge']);
   } else {
@@ -73,6 +79,7 @@ router.post('/webhook', function(req, res) {
   
   /* O que recebe do Facebook */
   var data = req.body;
+  console.log(data);
   
   /* Verifica se o envio é do Facebook */
   if(data && data.object === 'page') {
@@ -250,6 +257,8 @@ router.post('/webhook', function(req, res) {
     });
     /* Resposta ao Facebook, mostrando que recebeu a mensagem */
     res.sendStatus(200);
+  } else {
+    console.log('error página');
   }
 });
 
